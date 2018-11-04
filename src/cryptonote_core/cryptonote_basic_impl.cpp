@@ -16,7 +16,16 @@ using namespace epee;
 #include "common/base58.h"
 #include "crypto/hash.h"
 #include "common/int-util.h"
-
+#define MAINNET_HARDFORK_V1_HEIGHT ((uint64_t)(1)) // MAINNET v1 
+#define MAINNET_HARDFORK_V7_HEIGHT ((uint64_t)(307003)) // MAINNET v7 hard fork 
+#define MAINNET_HARDFORK_V8_HEIGHT ((uint64_t)(307054)) // MAINNET v8 hard fork 
+#define MAINNET_HARDFORK_V9_HEIGHT ((uint64_t)(308110)) // MAINNET v9 hard fork 
+#define MAINNET_HARDFORK_V10_HEIGHT ((uint64_t)(310790)) // MAINNET v10 hard fork 
+#define MAINNET_HARDFORK_V11_HEIGHT ((uint64_t)(310860)) // MAINNET v11 hard fork -- 70 blocks difference from 10
+#define MAINNET_HARDFORK_V12_HEIGHT ((uint64_t)(333690)) // MAINNET v12 hard fork 
+#define MAINNET_HARDFORK_V13_HEIGHT ((uint64_t)(337496)) // MAINNET v13 hard fork  
+#define MAINNET_HARDFORK_V14_HEIGHT ((uint64_t)(337816)) // MAINNET v14 hard fork
+#define MAINNET_HARDFORK_V15_HEIGHT ((uint64_t)(337838)) // MAINNET v15 hard fork test
 namespace cryptonote {
 
   /************************************************************************/
@@ -33,12 +42,54 @@ namespace cryptonote {
     return CRYPTONOTE_MAX_TX_SIZE;
   }
   //-----------------------------------------------------------------------------------------------
-  bool get_block_reward(size_t median_size, size_t current_block_size, uint64_t already_generated_coins, uint64_t &reward) {
-    uint64_t base_reward = (MONEY_SUPPLY - already_generated_coins) >> EMISSION_SPEED_FACTOR;
+  bool get_block_reward(size_t median_size, size_t current_block_size, uint64_t already_generated_coins, uint64_t &reward, uint8_t version, uint64_t height) {
+    static_assert(DIFFICULTY_TARGET_V2%60==0&&DIFFICULTY_TARGET_V1%60==0,"difficulty targets must be a multiple of 60");
+    uint64_t versionHeight = height; // alias used for emissions
+    auto version = BLOCK_MAJOR_VERSION_2;
+    const int target = version < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
+    uint64_t TOKEN_SUPPLY = version < 7 ? MONEY_SUPPLY_ETN : MONEY_SUPPLY;
+    const int target_minutes = target / 60;
+    const int emission_speed_factor = EMISSION_SPEED_FACTOR_PER_MINUTE - (target_minutes-1);
+    const int emission_speed_factor_v2 = EMISSION_SPEED_FACTOR_PER_MINUTE + (target_minutes-1);
+    const int emission_speed_factor_v3 = EMISSION_SPEED_FACTOR_PER_MINUTE + (target_minutes-2); // v10
+    uint64_t emission_speed = versionHeight < MAINNET_HARDFORK_V7_HEIGHT ? emission_speed_factor : versionHeight >= MAINNET_HARDFORK_V10_HEIGHT ? emission_speed_factor_v3 : emission_speed_factor_v2;
+    uint64_t base_reward = (TOKEN_SUPPLY - already_generated_coins) >> emission_speed_factor;
+    
+    uint64_t round_factor = 10; // 1 * pow(10, 1)
+    if (version >= 7)
+    {
+        base_reward = ((uint64_t)(TOKEN_SUPPLY - already_generated_coins)) >> emission_speed_factor_v2;
+    }
+    else
+    {
+      // do something
+      base_reward = ((uint64_t)(TOKEN_SUPPLY - already_generated_coins)) >> emission_speed_factor;
+    }
+    
+   const uint64_t FINITE_SUBSIDY = 100U;
+   if (base_reward < FINITE_SUBSIDY){
+     if (TOKEN_SUPPLY > already_generated_coins){
+       base_reward = FINAL_SUBSIDY_PER_MINUTE;
+     }
+     else{
+       base_reward = FINITE_SUBSIDY/2;
+     }
+   }
+    
+    // rounding (floor) base reward
+    if (version > 7)
+    {
+    base_reward = base_reward / round_factor * round_factor;
+    }
+    if (version < 2) 
+    {
+     base_reward = (MONEY_SUPPLY_ETN - already_generated_coins) >> emission_speed_factor;
+    }
+    uint64_t full_reward_zone = get_min_block_size(version);
 
     //make it soft
-    if (median_size < CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE) {
-      median_size = CRYPTONOTE_BLOCK_GRANTED_FULL_REWARD_ZONE;
+    if (median_size < full_reward_zone) {
+      median_size = full_reward_zone;
     }
 
     if (current_block_size <= median_size) {
@@ -47,7 +98,7 @@ namespace cryptonote {
     }
 
     if(current_block_size > 2 * median_size) {
-      LOG_PRINT_L4("Block cumulative size is too big: " << current_block_size << ", expected less than " << 2 * median_size);
+      MERROR("Block cumulative size is too big: " << current_block_size << ", expected less than " << 2 * median_size);
       return false;
     }
 
@@ -55,7 +106,11 @@ namespace cryptonote {
     assert(current_block_size < std::numeric_limits<uint32_t>::max());
 
     uint64_t product_hi;
-    uint64_t product_lo = mul128(base_reward, current_block_size * (2 * median_size - current_block_size), &product_hi);
+    // BUGFIX: 32-bit saturation bug (e.g. ARM7), the result was being
+    // treated as 32-bit by default.
+    uint64_t multiplicand = 2 * median_size - current_block_size;
+    multiplicand *= current_block_size;
+    uint64_t product_lo = mul128(base_reward, multiplicand, &product_hi);
 
     uint64_t reward_hi;
     uint64_t reward_lo;

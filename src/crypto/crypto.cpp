@@ -2,12 +2,7 @@
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#if !defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__DragonFly__)
- #include <alloca.h>
-#else
- #include <stdlib.h>
-#endif
-
+#include <alloca.h>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -226,7 +221,7 @@ DISABLE_VS_WARNINGS(4200)
 POP_WARNINGS
 
   static inline size_t rs_comm_size(size_t pubs_count) {
-    return sizeof(rs_comm) + pubs_count * sizeof(rs_comm().ab[0]);
+    return sizeof(rs_comm) + pubs_count * 2 * sizeof(ec_point);
   }
 
   void crypto_ops::generate_ring_signature(const hash &prefix_hash, const key_image &image,
