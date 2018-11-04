@@ -2,7 +2,12 @@
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <alloca.h>
+#if !defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__DragonFly__)
+ #include <alloca.h>
+#else
+ #include <stdlib.h>
+#endif
+
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>
