@@ -16,12 +16,10 @@
             "include_dirs": [
                 "src",
                 "src/contrib/epee/include",
-                "/usr/local/include",
                 "<!(node -e \"require('nan')\")",
             ],
             "link_settings": {
                 "libraries": [
-                    "-L/usr/local/lib",
                     "-lboost_system",
                     "-lboost_date_time",
                 ]
@@ -32,9 +30,6 @@
                   "-fexceptions",
                   "-frtti",
             ],
-            "xcode_settings": {
-              "OTHER_CFLAGS": ["-fexceptions", "-frtti"]
-            }
         }
     ]
 }
